@@ -15,6 +15,7 @@ from __future__ import unicode_literals, print_function
 import random
 from pathlib import Path
 import spacy
+from spacy.training import Example
 from spacy.util import minibatch, compounding
 import pandas as pd
 import traceback
@@ -30,8 +31,9 @@ def main(TRAIN_DATA, iterations, model=None, output_dir=None):
         print("Created blank 'en' model")
 
     if 'ner' not in nlp.pipe_names:
-        ner = nlp.create_pipe('ner')
-        nlp.add_pipe(ner, last=True)
+        # ner = nlp.create_pipe('ner')
+        nlp.add_pipe('ner', last=True)
+        ner = nlp.get_pipe("ner")
     
     # otherwise, get it so we can add labels
     else:
@@ -45,17 +47,20 @@ def main(TRAIN_DATA, iterations, model=None, output_dir=None):
     # get names of other pipes to disable them during training
     other_pipes = [pipe for pipe in nlp.pipe_names if pipe != 'ner']
     with nlp.disable_pipes(*other_pipes):  # only train NER
-        optimizer = nlp.begin_training(cpu_count=6)
+        optimizer = nlp.begin_training()
         for itn in range(iterations):
             print("Statring iteration " + str(itn))
             random.shuffle(TRAIN_DATA)
             losses = {}
             batches = minibatch(TRAIN_DATA, size=8)
             for batch in batches:
-                text, annotations = zip(*batch)
+                examples = []
+                for text, annotations in batch:
+                    doc = nlp.make_doc(text)
+                    example = Example.from_dict(doc, annotations)
+                    examples.append(example)
                 nlp.update(
-                    text,  # batch of texts
-                    annotations,  # batch of annotations
+                    examples,
                     drop=0.2,  # dropout - make it harder to memorise data
                     sgd=optimizer,  # callable to update weights
                     losses=losses)
@@ -96,7 +101,9 @@ def test_saved_model(output_dir):
 		'© COPYRIGHT 2019 AFR FURNITURE RENTAL',
 		'© 2019 All Rights Reserved by Abundant Life Worship Center of Whippan',
 		'Copyright ©Voyagers Travel',
-		'ABVNBYOND Inc © 2013 | All Rights Reserved'
+		'ABVNBYOND Inc © 2013 | All Rights Reserved',
+                'Munich Re supplies insurance to other companies',
+                'Mind the Math LLC suplies software to Mind the Grow LLC for various purposes.',
 	]
 	# test the saved model
 	print("Loading from", output_dir)
@@ -104,7 +111,7 @@ def test_saved_model(output_dir):
 	for text in TESTING_DATA:
 		doc = nlp2(text)
 		print("Entities", [(ent.text, ent.label_) for ent in doc.ents])
-		print("Tokens", [(t.text, t.ent_type_, t.ent_iob) for t in doc])
+		# print("Tokens", [(t.text, t.ent_type_, t.ent_iob) for t in doc])
 
 if __name__ == "__main__":
 	try:
